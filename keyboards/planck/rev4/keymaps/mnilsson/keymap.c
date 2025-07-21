@@ -1,4 +1,7 @@
 #include QMK_KEYBOARD_H
+#include "raw_hid.h"
+#include "tri_layer.h"
+
 #ifdef AUDIO_ENABLE
 #include "audio.h"
 #endif
@@ -10,6 +13,7 @@ enum planck_layers {
     _LOWER,
     _DATA_ENTRY,
     _GAME,
+    _GAME_COLEMAK,
     _GAME_LOWER,
     _ADJUST
 };
@@ -21,7 +25,13 @@ enum planck_keycodes
     LOWER,
     RAISE,
     DATAENT,
-    GAME
+    GAME,
+    GAME_COLEMAK,
+
+    MP_1,
+    MP_2,
+    MP_3,
+    MP_4
 };
 
 #define LOWER MO(_LOWER)
@@ -78,7 +88,7 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
  * `-----------------------------------------------------------------------------------'
      */
     [_RAISE] = {
-        {_______, _______, _______, _______, _______, _______, _______, _______, _______, _______, _______, KC_BSPC},
+        {MP_1   , MP_2   , MP_3   , MP_4   , _______, _______, _______, _______, _______, _______, _______, KC_BSPC},
         {KC_DEL , KC_F1  , KC_F2  , KC_F3  , KC_F4  , KC_F5  , KC_F6  , _______, _______, _______, _______, _______},
         {_______, KC_F7, KC_F8, KC_F9, KC_F10, KC_F11, KC_F12, KC_PGDN, KC_PGUP, _______, _______, _______},
         {_______, _______, _______, _______, _______, _______, _______, _______, KC_MNXT, KC_VOLD, KC_VOLU, KC_MPLY}
@@ -137,6 +147,24 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
         {KC_NO, KC_LGUI, KC_LCTL, KC_LALT,  LOWER_GM, KC_SPC, KC_ENT, RAISE, KC_LEFT, KC_DOWN, KC_UP, KC_RGHT}
     },
 
+    /* Colemak
+ * ,-----------------------------------------------------------------------------------.
+ * | Tab  |   Q  |   W  |   F  |   P  |   G  |   J  |   L  |   U  |   Y  |   ;  | Bksp |
+ * |------+------+------+------+------+-------------+------+------+------+------+------|
+ * | Esc  |   A  |   R  |   S  |   T  |   D  |   H  |   N  |   E  |   I  |   O  |  "   |
+ * |------+------+------+------+------+------|------+------+------+------+------+------|
+ * | Shift|   Z  |   X  |   C  |   V  |   B  |   K  |   M  |   ,  |   .  |   /  |Shift |
+ * |------+------+------+------+------+------+------+------+------+------+------+------|
+ * | Hyper| Ctrl | Alt  | GUI  |Lower | Space| Enter|Raise | Left | Down |  Up  |Right |
+ * `-----------------------------------------------------------------------------------'
+     */
+    [_GAME_COLEMAK] = {
+        {KC_ESC, KC_Q, KC_W, KC_F, KC_P, KC_G, KC_J, KC_L, KC_U, KC_Y, KC_SCLN, KC_BSPC},
+        {KC_TAB, KC_A, KC_R, KC_S, KC_T, KC_D, KC_H, KC_N, KC_E, KC_I, KC_O, KC_QUOT},
+        {KC_LSFT, KC_Z, KC_X, KC_C, KC_V, KC_B, KC_K, KC_M, KC_COMM, KC_DOT, KC_SLSH, KC_RSFT},
+        {KC_NO, KC_LGUI, KC_LCTL, KC_LALT, LOWER_GM, KC_SPC, KC_ENT, RAISE, KC_LEFT, KC_DOWN, KC_UP, KC_RGHT}
+    },
+
     /*
  * ,-----------------------------------------------------------------------------------.
  * |      |   1  |   2  |   3  |   4  |   5  |   6  |   7  |   8  |   9  |   0  |  -   |
@@ -160,7 +188,7 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
  * |------+------+------+------+------+-------------+------+------+------+------+------|
  * |      |      |      |Aud on|Audoff|AGnorm|AGswap|Qwerty|Colemk| Game |      |NUMKEY|
  * |------+------+------+------+------+------|------+------+------+------+------+------|
- * |      |Voice-|Voice+|Mus on|Musoff|MIDIon|MIDIof|      |      |      |      |      |
+ * |      |Voice-|Voice+|Mus on|Musoff|MIDIon|MIDIof|      | cm gm|      |      |      |
  * |------+------+------+------+------+------+------+------+------+------+------+------|
  * |      |      |      |      |      |             |      |      |      |      |      |
  * `-----------------------------------------------------------------------------------'
@@ -168,12 +196,13 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
     [_ADJUST] = {
         {_______, QK_BOOT, _______, _______, _______, _______, _______, _______, _______, _______, _______, KC_DEL},
         {_______, _______, _______, AU_ON, AU_OFF, AG_NORM, AG_SWAP, QWERTY, COLEMAK, GAME, _______, DATAENT},
-        {_______, AU_PREV, AU_NEXT, MU_ON, MU_OFF, MI_ON, MI_OFF, _______, _______, _______, _______, _______},
+        {_______, AU_PREV, AU_NEXT, MU_ON, MU_OFF, MI_ON, MI_OFF, GAME, GAME_COLEMAK, _______, _______, _______},
         {_______, _______, _______, _______, _______, _______, _______, _______, _______, _______, _______, _______}
     }
 
 };
 
+void raw_hid_receive(uint8_t *data, uint8_t length) { raw_hid_send(data, length);}
 
 void persistant_default_layer_set(uint16_t default_layer)
 {
@@ -182,11 +211,18 @@ void persistant_default_layer_set(uint16_t default_layer)
 }
 
 layer_state_t layer_state_set_user(layer_state_t state) {
-    return update_tri_layer_state(state, _LOWER, _RAISE, _ADJUST);
+    if (layer_state_is(_GAME_COLEMAK) || layer_state_is(_GAME_LOWER)) {
+        return update_tri_layer_state(state, _GAME_LOWER, _RAISE, _ADJUST);
+    } else {
+        return update_tri_layer_state(state, _LOWER, _RAISE, _ADJUST);
+    }
 }
 
 bool process_record_user(uint16_t keycode, keyrecord_t *record)
 {
+	    uint8_t response[32];
+	    memset(response, 0, 32);
+
     switch (keycode)
     {
         case QWERTY:
@@ -210,32 +246,33 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record)
             }
             return false;
             break;
+        case GAME_COLEMAK:
+            if (record->event.pressed) {
+                set_single_persistent_default_layer(_GAME_COLEMAK);
+            }
+            return false;
+            break;
 
-//            if (record->event.pressed)
-//            {
-//                layer_on(_LOWER);
-//                update_tri_layer(_LOWER, _RAISE, _ADJUST);
-//            }
-//            else
-//            {
-//                layer_off(_LOWER);
-//                update_tri_layer(_LOWER, _RAISE, _ADJUST);
-//            }
-//            return false;
-//            break;
-//        case RAISE:
-//            if (record->event.pressed)
-//            {
-//                layer_on(_RAISE);
-//                update_tri_layer(_LOWER, _RAISE, _ADJUST);
-//            }
-//            else
-//            {
-//                layer_off(_RAISE);
-//                update_tri_layer(_LOWER, _RAISE, _ADJUST);
-//            }
-//            return false;
-//            break;
+
+        case MP_1:;
+                  // mp1
+            if (record->event.pressed) {
+                  response[0] = 'M';
+                  response[1] = 'P';
+                  response[2] = '1';
+                  raw_hid_send(response, 32);
+            }
+                  return false;
+                  break;
+        case MP_2:;
+            if (record->event.pressed) {
+                  response[0] = 'M';
+                  response[1] = 'P';
+                  response[2] = '2';
+                  raw_hid_send(response, 32);
+            }
+                  return false;
+                  break;
 
         case DATAENT:
             if (record->event.pressed)
@@ -247,3 +284,4 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record)
     }
     return true;
 }
+
